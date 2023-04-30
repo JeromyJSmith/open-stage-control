@@ -8,10 +8,10 @@ ipc_send('version', '1.17.1')
 argv = argv[argv.index('--params') + 1:]
 
 if 'list' in argv:
-    list()
+    []
 
 if 'list-only' in argv:
-    list()
+    []
     exit()
 
 
@@ -25,11 +25,11 @@ for arg in argv:
         name, *ports = arg.split(':')
         ports = ':'.join(ports) # port names may contain colons
 
-        inputs[name] = rtmidi.MidiIn(API, name if not JACK else name + '_in')
-        outputs[name] = rtmidi.MidiOut(API, name if not JACK else name + '_out')
+        inputs[name] = rtmidi.MidiIn(API, f'{name}_in' if JACK else name)
+        outputs[name] = rtmidi.MidiOut(API, f'{name}_out' if JACK else name)
 
         if debug:
-            ipc_send('debug','device "%s" created' % name)
+            ipc_send('debug', f'device "{name}" created')
 
 
         if ports == 'virtual':
@@ -37,16 +37,16 @@ for arg in argv:
             try:
 
                 if platform == 'darwin':
-                    inputs[name].open_virtual_port('%s-in' % name)
-                    outputs[name].open_virtual_port('%s-out' % name)
+                    inputs[name].open_virtual_port(f'{name}-in')
+                    outputs[name].open_virtual_port(f'{name}-out')
                 else:
                     inputs[name].open_virtual_port('midi_in')
                     outputs[name].open_virtual_port('midi_out')
 
                 if debug:
-                    ipc_send('debug','virtual ports opened for device "%s"' % name)
+                    ipc_send('debug', f'virtual ports opened for device "{name}"')
             except:
-                ipc_send('error', 'failed to open virtual ports for device "%s"' % name)
+                ipc_send('error', f'failed to open virtual ports for device "{name}"')
                 ipc_send('error', traceback.format_exc())
                 inputs[name] = None
                 outputs[name] = None
@@ -76,12 +76,15 @@ for arg in argv:
                 try:
                     inputs[name].open_port(in_port, 'midi_in')
                     if debug:
-                        ipc_send('debug','device "%s" connected to input port %s (%s)' % (name, in_port, in_dev.get_port_name(in_port)))
+                        ipc_send(
+                            'debug',
+                            f'device "{name}" connected to input port {in_port} ({in_dev.get_port_name(in_port)})',
+                        )
                 except:
                     if type(in_port) != int or in_port >= in_dev.get_port_count():
                         ipc_send('error', 'can\'t connect "%s" to input port "%s" (port not in list)' % (name, in_port))
                     else:
-                        ipc_send('error', 'failed to connect "%s" to input port %s' % (name, in_port))
+                        ipc_send('error', f'failed to connect "{name}" to input port {in_port}')
                         ipc_send('error', traceback.format_exc())
                     inputs[name] = None
 
@@ -90,12 +93,15 @@ for arg in argv:
                 try:
                     outputs[name].open_port(out_port, 'midi_out')
                     if debug:
-                        ipc_send('debug','device "%s" connected to output port %s (%s)' % (name, out_port, out_dev.get_port_name(out_port)))
+                        ipc_send(
+                            'debug',
+                            f'device "{name}" connected to output port {out_port} ({out_dev.get_port_name(out_port)})',
+                        )
                 except:
                     if type(out_port) != int or out_port >= out_dev.get_port_count():
                         ipc_send('error', 'can\'t connect "%s" to output port "%s" (port not in list)' % (name, out_port))
                     else:
-                        ipc_send('error', 'failed to connect "%s" to output port %s' % (name, out_port))
+                        ipc_send('error', f'failed to connect "{name}" to output port {out_port}')
                         ipc_send('error', traceback.format_exc())
                     outputs[name] = None
 
@@ -119,11 +125,10 @@ def create_callback(name):
             if not ignore_mtc and is_mtc(message):
 
                 mtc = mtc_decode(message, name)
-                if mtc == None:
+                if mtc is None:
                     return
-                else:
-                    osc['address'] = MIDI_TO_OSC[MIDI_TIME_CODE]
-                    osc['args'].append({'type': 'string', 'value': mtc})
+                osc['address'] = MIDI_TO_OSC[MIDI_TIME_CODE]
+                osc['args'].append({'type': 'string', 'value': mtc})
 
             elif mtype == SYSTEM_EXCLUSIVE:
                 # Parse the provided data into a hex MIDI data string of the form  'f0 7e 7f 06 01 f7'.
@@ -152,9 +157,10 @@ def create_callback(name):
 
 
             if debug:
-                ipc_send('debug','in: %s From: midi:%s' % (midi_str(message, name), name))
+                ipc_send('debug', f'in: {midi_str(message, name)} From: midi:{name}')
 
             ipc_send('osc', osc)
+
 
 
 
@@ -195,42 +201,40 @@ sysexRegex = re.compile(r'([^0-9A-Fa-f])\1(\1\1)*')
 def send_midi(name, event, *args):
 
     if name not in outputs:
-        ipc_send('error','unknown device "%s"' % name)
+        ipc_send('error', f'unknown device "{name}"')
         return
 
-    if outputs[name] == None:
-        ipc_send('error','device "%s" has no opened output port' % name)
+    if outputs[name] is None:
+        ipc_send('error', f'device "{name}" has no opened output port')
         return
 
     if event not in OSC_TO_MIDI:
-        ipc_send('error','invalid address (%s)' % event)
+        ipc_send('error', f'invalid address ({event})')
         return
 
     m = None
 
     mtype = OSC_TO_MIDI[event]
 
-    if mtype == SYSTEM_EXCLUSIVE or mtype == MIDI_TIME_CODE:
+    if mtype == SYSTEM_EXCLUSIVE:
 
-        if mtype == MIDI_TIME_CODE:
+        try:
+            m = []
+            for arg in args:
+                if type(arg) is str:
+                    arg = arg.replace(' ', '')                          # remove spaces
+                    arg = [arg[i:i+2] for i in range(0, len(arg), 2)]   # split in 2 chars bytes
+                    arg = [int(x, 16) for x in arg]                     # parse hex bytes
+                    m.extend(iter(arg))
+                else:
+                    m.append(int(arg) & 0x7F)
 
-            m = mtc_encode(args)
+        except:
+            pass
 
-        else:
-            try:
-                m = []
-                for arg in args:
-                    if type(arg) is str:
-                        arg = arg.replace(' ', '')                          # remove spaces
-                        arg = [arg[i:i+2] for i in range(0, len(arg), 2)]   # split in 2 chars bytes
-                        arg = [int(x, 16) for x in arg]                     # parse hex bytes
-                        for x in arg:
-                            m.append(x)
-                    else:
-                        m.append(int(arg) & 0x7F)
+    elif mtype == MIDI_TIME_CODE:
 
-            except:
-                pass
+        m = mtc_encode(args)
 
     else:
 
@@ -249,16 +253,19 @@ def send_midi(name, event, *args):
 
         m = midi_message(mtype, *args)
 
-    if m == None:
+    if m is None:
 
-        ipc_send('error','could not convert osc to midi (%s %s)' % (event, " ".join([str(x) for x in args])))
+        ipc_send(
+            'error',
+            f'could not convert osc to midi ({event} {" ".join([str(x) for x in args])})',
+        )
 
     else:
 
         outputs[name].send_message(m)
 
         if debug:
-            ipc_send('debug','out: %s To: midi:%s' % (midi_str(m, name), name))
+            ipc_send('debug', f'out: {midi_str(m, name)} To: midi:{name}')
 
 
 while True:

@@ -21,21 +21,14 @@ def mtc_decode(message, port):
         data = message[1] & 0xF
         mtc[port][piece] = data
 
-        if piece == 7:
-            mtc_bytes = [0, 0, 0, 0]
-            for i in range(8):
-
-                mtc_index = 3 - i // 2
-                if i % 2 == 0:
-                    # 'even' pieces came from the low nibble
-                    mtc_bytes[mtc_index] += mtc[port][i]
-                else:
-                    # 'odd' pieces came from the high nibble
-                    mtc_bytes[mtc_index] += mtc[port][i] * 16
-
-        else:
+        if piece != 7:
             return None
 
+        mtc_bytes = [0, 0, 0, 0]
+        for i in range(8):
+
+            mtc_index = 3 - i // 2
+            mtc_bytes[mtc_index] += mtc[port][i] if i % 2 == 0 else mtc[port][i] * 16
     else:
 
         mtc_bytes = message[5:-1]

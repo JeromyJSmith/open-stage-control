@@ -37,11 +37,11 @@ def midi_str(message, port):
 
     if is_mtc(message):
 
-        s = 'MTC: timecode=%s' % mtc_decode(message, None)
+        s = f'MTC: timecode={mtc_decode(message, None)}'
 
     elif mtype == SYSTEM_EXCLUSIVE:
 
-        s = 'SYSTEM_EXCLUSIVE: sysex=%s' % ' '.join([hex(x).replace('0x', '').zfill(2) for x in message])
+        s = f"SYSTEM_EXCLUSIVE: sysex={' '.join([hex(x).replace('0x', '').zfill(2) for x in message])}"
 
     else:
 
@@ -67,6 +67,6 @@ def midi_str(message, port):
 
         except IndexError:
 
-            s = 'NONE (ERROR: wrong number of argument for %s)' % MIDI_TO_OSC[mtype]
+            s = f'NONE (ERROR: wrong number of argument for {MIDI_TO_OSC[mtype]})'
 
     return s
